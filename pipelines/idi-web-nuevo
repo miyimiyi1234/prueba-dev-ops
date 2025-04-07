@@ -1,0 +1,54 @@
+#!groovy
+
+
+env.RUTA_GIT_SOURCE = 'git@bitbucket.org:afpintegra/idi-web-dev.git'
+
+properties([parameters([string (defaultValue: '', description: 'NUMERO DE TAG', name: 'nombreTag', trim: true)])])
+
+if (!nombreTag?.trim()) {
+    error("NO SE HA DEFINIDO LA VARIABLE TAG ...")
+}
+
+env.SOURCE_SIT = 'IDI'
+
+def SOURCE = 'IDI'
+
+node {
+    deleteDir()
+
+    stage('Descargar Fuentes') {
+        dir("configuracion") {
+            checkout scm
+        }
+        dir("source") {
+            checkout([$class: 'GitSCM', 
+                branches: [[name: "${nombreTag}"]],  
+                doGenerateSubmoduleConfigurations: false,                           
+                submoduleCfg: [], 
+                userRemoteConfigs: [[credentialsId: 'bitbucket_cloud',
+                                     url: "${RUTA_GIT_SOURCE}"]]
+            ])
+        }
+    }
+
+    stage('Generar desplegable') {
+        SOURCE = env.SOURCE_SIT
+        script {
+            bat "cd source/codigo/${SOURCE} && compilacion.bat"
+        }
+    }
+
+    stage('Sincronizar carpetas de configuraciones') {
+        script {
+            bat "robocopy configuracion/Sura/AFP/Webapps/webapp-idi-integra/desarrollo source/codigo/${SOURCE} *.txt /E & EXIT /B 0"
+            bat "robocopy configuracion/Sura/AFP/Webapps/webapp-idi-integra/desarrollo source/codigo/${SOURCE} *.bat /E & EXIT /B 0"
+            bat "robocopy configuracion/Sura/AFP/Webapps/webapp-idi-integra/desarrollo source/codigo/${SOURCE}/PrecompiledWeb/IN-IDI *.config /E & EXIT /B 0"
+        }
+    }
+
+    stage('Copiar Fuentes a IIS Desarrollo') {  
+        script {
+            bat "cd source/codigo/${SOURCE} && despliegueDesarrollo.bat" 
+        }
+    }
+}
